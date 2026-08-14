@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
 
     ProtocolStores stores(storage, "aci");
 
-    AuthSocket socket(username, account.password, resolveCaCertPath(),
+    AuthSocket socket(username, account.password,
                       [](const std::string&, const std::string&, const Bytes&) {});
     socket.connect();
     std::cout << "PASS: connected to chat.signal.org as " << account.e164 << "\n";

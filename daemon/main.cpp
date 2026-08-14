@@ -1669,7 +1669,7 @@ bool setupAccount(const AccountConfig& accountConfig) {
                                     ? acct.account.aci
                                     : (acct.account.aci + "." + std::to_string(acct.account.device_id));
         acct.socket = std::make_unique<AuthSocket>(
-            username, acct.account.password, resolveCaCertPath(),
+            username, acct.account.password,
             [&acct](const std::string& verb, const std::string& path, const Bytes& body) {
                 onPush(acct, verb, path, body);
             },

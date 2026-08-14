@@ -35,7 +35,7 @@ struct ProvisionMessageResult {
 
 class ProvisioningClient {
 public:
-    explicit ProvisioningClient(std::string caCertPath, std::string serverHost = "chat.signal.org");
+    explicit ProvisioningClient(std::string serverHost = "chat.signal.org");
     ~ProvisioningClient();
 
     ProvisioningClient(const ProvisioningClient&) = delete;

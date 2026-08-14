@@ -263,8 +263,7 @@ SignalMutPointerConnectionManager makeConnectionManager() {
 } // namespace
 
 struct ProvisioningClient::Impl {
-    std::string caCertPath;   // unused - Environment::Prod's own pinning applies (see AuthSocket.cpp)
-    std::string serverHost;   // unused for the same reason
+    std::string serverHost;   // unused - kEnvironmentProd is hardcoded in makeConnectionManager()
     KeyPair ourKeyPair;
 
     SignalMutPointerTokioAsyncContext asyncContext{};
@@ -423,8 +422,7 @@ struct ProvisioningClient::Impl {
     }
 };
 
-ProvisioningClient::ProvisioningClient(std::string caCertPath, std::string serverHost) : impl_(new Impl()) {
-    impl_->caCertPath = std::move(caCertPath);
+ProvisioningClient::ProvisioningClient(std::string serverHost) : impl_(new Impl()) {
     impl_->serverHost = std::move(serverHost);
 }
 

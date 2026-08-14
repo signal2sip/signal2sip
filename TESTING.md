@@ -31,13 +31,13 @@ shared SQLCipher DB) - use test accounts, not production ones.
 
 | Binary | Usage | What it does |
 |---|---|---|
-| `authsocket_test` | `authsocket_test <username> <password> <ca-cert-path>` | Connects to the real `chat.signal.org` websocket and issues one harmless authenticated `GET /v1/keepalive` - proves TLS+pinned-CA, Basic Auth, and WebSocketMessage framing all work. |
+| `authsocket_test` | `authsocket_test <username> <password>` | Connects to the real `chat.signal.org` websocket and issues one harmless authenticated `GET /v1/keepalive` - proves TLS (pinned by libsignal-net-chat's own `Environment::Prod`), Basic Auth, and WebSocketMessage framing all work. |
 | `signal_roundtrip_test` | `signal_roundtrip_test <sender-account.json> <sender-sessions.json> <destination-service-id> "<text>"` | Fetches a real prekey bundle, establishes a session, encrypts a real Content message, and sends it via `PUT /v1/messages` - a real message is delivered to the destination. |
 | `refresh_prekeys_test` | `refresh_prekeys_test <account.json>` | Generates a fresh signed EC prekey + last-resort Kyber prekey and uploads via `PUT /v2/keys`. Safe/idempotent - real clients do this periodically anyway. |
 | `cdsi_lookup_test` | `cdsi_lookup_test <account.json> <e164> [e164...]` | Resolves one or more phone numbers to their real ACI/PNI via production Contact Discovery Service. |
 | `resolve_outgoing_target_test` | `resolve_outgoing_target_test <db_path> <db_key> <account_name> <target> [ttl_sec]` | Exercises `ContactResolver`'s cache+CDSI resolution path (same one the daemon uses for outgoing calls) without placing a call. Run twice against the same target to see the second run hit cache instead of a real CDSI call. |
 | `storage_sync_loop_test` | `storage_sync_loop_test <signal2sip.conf path> <account name> [iterations]` | Calls `fetchStorageContacts()` N times (default 20) against a real, already-linked account and reports pass/fail + contact count per iteration - regression check for two past Storage Service decrypt bugs. |
-| `toggle_discoverability_test` | `toggle_discoverability_test <db_path> <db_key> <account_name> <ca_cert_path> <true\|false>` | Forces a real `PUT /v1/accounts/attributes/` change to `discoverableByPhoneNumber` on an existing account, to kick Signal's CDS directory-sync pipeline. Debug tool, not routine - mutates real account state. |
+| `toggle_discoverability_test` | `toggle_discoverability_test <db_path> <db_key> <account_name> <true\|false>` | Forces a real `PUT /v1/accounts/attributes/` change to `discoverableByPhoneNumber` on an existing account, to kick Signal's CDS directory-sync pipeline. Debug tool, not routine - mutates real account state. |
 
 ## Live tests against a real SIP trunk
 

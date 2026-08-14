@@ -460,7 +460,7 @@ struct AuthSocket::Impl {
     }
 };
 
-AuthSocket::AuthSocket(std::string username, std::string password, std::string /*caCertPath*/,
+AuthSocket::AuthSocket(std::string username, std::string password,
                        std::function<void(const std::string&, const std::string&, const Bytes&)> onPush,
                        std::string signalProxy, bool censorshipCircumvention)
     : impl_(new Impl()) {

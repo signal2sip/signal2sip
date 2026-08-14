@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     std::cout << "PASS: generated fresh signed+kyber prekeys (keyId=" << keyId << ") for aci and pni\n";
 
     std::string username = deviceId == 1 ? aci : (aci + "." + std::to_string(deviceId));
-    AuthSocket socket(username, password, resolveCaCertPath(),
+    AuthSocket socket(username, password,
                       [](const std::string&, const std::string&, const Bytes&) {});
     socket.connect();
     std::cout << "PASS: connected to chat.signal.org as " << e164 << "\n";

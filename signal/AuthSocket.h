@@ -14,9 +14,10 @@
 // this FFI surface is Signal-iOS's own sole, production chat transport and
 // already has proxy/censorship-circumvention support built in, which the
 // hand-rolled version would have had to reimplement from scratch (see
-// project memory: signal2sip-authsocket-ffi-migration). This class's own
-// public API is unchanged by that migration - every existing caller needed
-// zero changes.
+// project memory: signal2sip-authsocket-ffi-migration). The constructor's
+// caCertPath parameter (kept at first for API stability, but always
+// ignored since the FFI's own Environment::Prod pinning replaced it) was
+// dropped 2026-08-14 once nothing else in the class needed it.
 
 #include <cstdint>
 #include <functional>
@@ -49,7 +50,7 @@ public:
     // own Fastly/Google Cloud Run infrastructure) - independent of
     // signalProxy, both can be set at once though that's not a real
     // client's usual configuration.
-    AuthSocket(std::string username, std::string password, std::string caCertPath,
+    AuthSocket(std::string username, std::string password,
                std::function<void(const std::string& verb, const std::string& path, const Bytes& body)> onPush,
                std::string signalProxy = "", bool censorshipCircumvention = false);
     ~AuthSocket();

@@ -16,7 +16,7 @@
 // directory-sync pipeline (DynamoDB Streams -> Lambda -> Kinesis -> CDS
 // enclave) another chance to pick it up.
 //
-// usage: toggle_discoverability_test <db_path> <db_key> <account_name> <ca_cert_path> <true|false>
+// usage: toggle_discoverability_test <db_path> <db_key> <account_name> <true|false>
 
 #include <iostream>
 
@@ -29,20 +29,18 @@ using namespace signal2sip;
 using json = nlohmann::json;
 
 int main(int argc, char** argv) {
-    if (argc != 6) {
-        std::cerr << "usage: toggle_discoverability_test <db_path> <db_key> <account_name> <ca_cert_path> "
-                     "<true|false>\n";
+    if (argc != 5) {
+        std::cerr << "usage: toggle_discoverability_test <db_path> <db_key> <account_name> <true|false>\n";
         return 2;
     }
     Storage storage(argv[1], argv[2], argv[3]);
     AccountRecord account = storage.loadAccount();
-    std::string caCertPath = argv[4];
-    bool discoverable = std::string(argv[5]) == "true";
+    bool discoverable = std::string(argv[4]) == "true";
 
     std::string username =
         account.device_id == 1 ? account.aci : (account.aci + "." + std::to_string(account.device_id));
 
-    AuthSocket socket(username, account.password, caCertPath,
+    AuthSocket socket(username, account.password,
                        [](const std::string& verb, const std::string& path, const Bytes&) {
                            std::cout << "PUSH: " << verb << " " << path << "\n";
                        });

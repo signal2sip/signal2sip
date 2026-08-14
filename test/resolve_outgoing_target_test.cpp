@@ -26,7 +26,6 @@ int main(int argc, char** argv) try {
     std::string username =
         account.device_id == 1 ? account.aci : (account.aci + "." + std::to_string(account.device_id));
     AuthSocket socket(username, account.password,
-                       resolveCaCertPath(),
                        [](const std::string&, const std::string&, const Bytes&) {});
     auto t0 = std::chrono::steady_clock::now();
     socket.connect();

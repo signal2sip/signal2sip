@@ -51,7 +51,7 @@ int main(int argc, char** argv) try {
     // transport) - this is only to fetch the short-lived directory-
     // service token GET /v2/directory/auth requires, via the account's
     // normal persistent credentials.
-    AuthSocket socket(username, password, resolveCaCertPath(),
+    AuthSocket socket(username, password,
                        [](const std::string&, const std::string&, const Bytes&) {});
     socket.connect();
     std::cout << "PASS: connected to chat.signal.org\n";

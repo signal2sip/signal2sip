@@ -442,10 +442,24 @@ void cmdLink(const DaemonConfig& config, const std::string& accountName) {
     Storage storage(config.global.dbPath, config.global.dbKey, accountName);
     requireNoExistingAccount(storage, accountName);
 
+    // Checked upfront, not just left to fail wherever it's first needed:
+    // the QR-scan wait below takes up to ~90s, and the account's finishing
+    // `PUT /v1/devices/link` (RegistrationClient, further down) is the one
+    // remaining real consumer of this path (everything else - AuthSocket,
+    // ProvisioningClient - gets its TLS pinning from libsignal-net-chat's
+    // own Environment::Prod now). Better to fail immediately with a clear
+    // reason than after the user has already scanned the code.
+    std::string caCertPath = resolveCaCertPath();
+    if (!std::filesystem::exists(caCertPath)) {
+        throw std::runtime_error("Signal root CA cert not found at '" + caCertPath +
+                                  "' - `link`'s finishing PUT /v1/devices/link request needs it. Check "
+                                  "/etc/signal2sip/certs/signal-root-ca.pem or ./certs/signal-root-ca.pem.");
+    }
+
     ResolvedAccount resolved = resolveAccount(config, accountName);
     AccountConfig account = resolved.account;
 
-    ProvisioningClient provisioning(resolveCaCertPath());
+    ProvisioningClient provisioning;
     std::cout << "[link] connecting to provisioning socket...\n";
     ProvisionMessageResult provisioned = provisioning.waitForProvisionMessage();
     std::cout << "[link] decrypted provisioning message OK for " << provisioned.e164 << ", finishing linking...\n";
@@ -570,7 +584,7 @@ void cmdUnlink(const DaemonConfig& config, const std::string& accountName) {
 void putFetchesMessages(Storage& storage, const AccountRecord& account, bool fetchesMessages) {
     std::string username =
         account.device_id == 1 ? account.aci : (account.aci + "." + std::to_string(account.device_id));
-    AuthSocket socket(username, account.password, resolveCaCertPath(),
+    AuthSocket socket(username, account.password,
                       [](const std::string&, const std::string&, const Bytes&) {});
     socket.connect();
 
@@ -670,7 +684,7 @@ void cmdDeleteAccount(const DaemonConfig& config, const std::string& accountName
 
     std::string username =
         account.device_id == 1 ? account.aci : (account.aci + "." + std::to_string(account.device_id));
-    AuthSocket socket(username, account.password, resolveCaCertPath(),
+    AuthSocket socket(username, account.password,
                       [](const std::string&, const std::string&, const Bytes&) {});
     socket.connect();
 

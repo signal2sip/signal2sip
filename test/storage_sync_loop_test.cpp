@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
 
     std::string username =
         account.device_id == 1 ? account.aci : (account.aci + "." + std::to_string(account.device_id));
-    AuthSocket socket(username, account.password, resolveCaCertPath(),
+    AuthSocket socket(username, account.password,
                        [](const std::string&, const std::string&, const Bytes&) {});
     socket.connect();
     std::cout << "connected as " << account.e164 << " (" << account.aci << "), running " << iterations
