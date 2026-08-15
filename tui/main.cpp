@@ -658,7 +658,7 @@ int main(int argc, char** argv) {
     // typing for the delete-account variant; `lastResult` is set once the
     // gendb subprocess has actually run, switching the same screen from
     // "confirm?" to "here's what happened" (dismissed by any key).
-    enum class PendingAction { None, Enable, Disable, Deactivate, DeleteAccount };
+    enum class PendingAction { None, Enable, Disable, Deactivate, Unlink, DeleteAccount };
     PendingAction pending = PendingAction::None;
     std::string typedConfirm;
     std::optional<GendbResult> lastResult;
@@ -676,6 +676,7 @@ int main(int argc, char** argv) {
             case PendingAction::Enable: args.push_back("enable"); break;
             case PendingAction::Disable: args.push_back("disable"); break;
             case PendingAction::Deactivate: args.push_back("deactivate"); break;
+            case PendingAction::Unlink: args.push_back("unlink"); break;
             case PendingAction::DeleteAccount: args.push_back("delete-account"); break;
             case PendingAction::None: return;
         }
@@ -779,6 +780,16 @@ int main(int argc, char** argv) {
                                                              color(kFg)
                                                        : hbox({text("● ") | color(kBorder), text(tr(Key::NoWord))}) |
                                                              color(kDim)));
+        // Written by the running daemon, never by this TUI - see
+        // schema.sql's own comment on account.last_error/last_error_at.
+        // The message itself is intentionally shown as-is (untranslated) -
+        // it's the same technical string gendb list/journald show, not
+        // end-user UI prose.
+        if (!detail.last_error.empty()) {
+            statusRows.push_back(kv(tr(Key::DetailLastError), text(detail.last_error) | color(kBad)));
+            statusRows.push_back(
+                kv(tr(Key::DetailLastErrorSince), text(formatDate(detail.last_error_at)) | color(kDim)));
+        }
         if (detail.sip_host.empty()) {
             statusRows.push_back(kv("SIP", text(tr(Key::DetailSipNone)) | color(kDim)));
         } else {
@@ -815,6 +826,7 @@ int main(int argc, char** argv) {
                           }) |
                           bgcolor(kBgAlt);
         Element footer2 = hflow({text(" "),
+                                keyHint("l", detail.flow == "linked" ? "unlink" : tr(Key::FooterReset), kBad),
                                 hbox({text("[X]") | color(kBad), text(std::string(" ") + tr(Key::FooterDeleteAccount)) |
                                                                       color(kBad)}),
                                 keyHint("esc", tr(Key::FooterBack))}) |
@@ -840,6 +852,14 @@ int main(int argc, char** argv) {
             case PendingAction::Enable: return format1(Key::ActionEnableTitle, detailName);
             case PendingAction::Disable: return format1(Key::ActionDisableTitle, detailName);
             case PendingAction::Deactivate: return format1(Key::ActionDeactivateTitle, detailName);
+            case PendingAction::Unlink:
+                // Same underlying `gendb unlink` command either way - only
+                // the label differs, since "unlink" reads as nonsensical
+                // for a standalone/primary account (nothing was ever
+                // linked in the first place; this is really "clear the
+                // local slate so register can run again").
+                return format1(detail.flow == "linked" ? Key::ActionUnlinkTitle : Key::ActionResetTitle,
+                                detailName);
             case PendingAction::DeleteAccount: return format1(Key::ActionDeleteTitle, detailName);
             case PendingAction::None: return "";
         }
@@ -850,6 +870,7 @@ int main(int argc, char** argv) {
             case PendingAction::Enable: return tr(Key::ActionEnableBody);
             case PendingAction::Disable: return tr(Key::ActionDisableBody);
             case PendingAction::Deactivate: return tr(Key::ActionDeactivateBody);
+            case PendingAction::Unlink: return tr(Key::ActionUnlinkBody);
             case PendingAction::DeleteAccount: return tr(Key::ActionDeleteBody);
             case PendingAction::None: return "";
         }
@@ -857,7 +878,15 @@ int main(int argc, char** argv) {
     };
 
     auto renderConfirm = [&]() -> Element {
-        bool severe = pending == PendingAction::DeleteAccount;
+        // Unlink joins DeleteAccount as the two actions this build treats
+        // as severe (type-the-name confirm) - matches internals.md's own
+        // reversibility table, where unlink and delete-account are the
+        // only two commands marked "No" (unlike deactivate/enable/disable,
+        // all "Yes"). Unlink doesn't touch the real Signal account, but it
+        // permanently wipes this tool's only local copy of this account's
+        // keys/sessions/config, which is exactly the kind of one-way local
+        // action this dialog's severe tier exists to slow down.
+        bool severe = pending == PendingAction::DeleteAccount || pending == PendingAction::Unlink;
         Elements body;
 
         if (lastResult) {
@@ -1650,7 +1679,8 @@ int main(int argc, char** argv) {
                 screenIndex = 1;
                 return true;
             }
-            bool severe = pending == PendingAction::DeleteAccount;
+            // Same severe set as renderConfirm() above - see its comment.
+            bool severe = pending == PendingAction::DeleteAccount || pending == PendingAction::Unlink;
             if (severe) {
                 if (event == Event::Backspace) {
                     if (!typedConfirm.empty()) typedConfirm.pop_back();
@@ -1713,6 +1743,10 @@ int main(int argc, char** argv) {
         }
         if (event == Event::Character('u')) {
             openConfirm(PendingAction::Deactivate);
+            return true;
+        }
+        if (event == Event::Character('l')) {
+            openConfirm(PendingAction::Unlink);
             return true;
         }
         if (event == Event::Character('x')) {

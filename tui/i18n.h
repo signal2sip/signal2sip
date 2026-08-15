@@ -51,16 +51,17 @@ enum class Key {
     TypeLinked, TypePrimary,
     StatusEnabled, StatusDisabled, StatusError,
     SrtpMandatory, SrtpOptional,
-    DetailLinkedAt, DetailRegisteredAt, DetailEnabled,
+    DetailLinkedAt, DetailRegisteredAt, DetailEnabled, DetailLastError, DetailLastErrorSince,
     YesWord, NoWord,
     DetailSipNone, DetailSignaling, DetailMedia,
     AccountReadError,
     SectionIdentity, SectionStatus,
     DetailTitlebar, FooterConfigureSip, FooterDisable, FooterEnable, FooterSignalSettings,
-    FooterDeleteAccount, FooterBack,
+    FooterDeleteAccount, FooterBack, FooterReset,
     SignalingUdpInsecure, MediaSrtpNotGuaranteedPrefix,
-    ActionEnableTitle, ActionDisableTitle, ActionDeactivateTitle, ActionDeleteTitle,
-    ActionEnableBody, ActionDisableBody, ActionDeactivateBody, ActionDeleteBody,
+    ActionEnableTitle, ActionDisableTitle, ActionDeactivateTitle, ActionUnlinkTitle, ActionResetTitle,
+    ActionDeleteTitle,
+    ActionEnableBody, ActionDisableBody, ActionDeactivateBody, ActionUnlinkBody, ActionDeleteBody,
     ResultDone, ResultError, AnyKeyToList, TypeAccountName, ConfirmAccountLabel,
     FooterCancel, EnterDelete, TypeNameInFull, FooterConfirm,
     ErrSipHostRequired, ErrSipExtensionRequired, ErrSipPasswordRequired, ErrTlsRequiresCa,
@@ -133,6 +134,9 @@ inline constexpr const char* kTable[kKeyCount][kLangCount] = {
                                "Enregistré", "Registrato", "Registrado", "Registrado"},
     /* DetailEnabled */ {"Enabled", "Увімкнено", "Включён", "Włączone", "Aktiviert", "Activé", "Abilitato",
                           "Habilitado", "Habilitado"},
+    /* DetailLastError */ {"Problem", "Проблема", "Проблема", "Problem", "Problem", "Problème",
+                            "Problema", "Problema", "Problema"},
+    /* DetailLastErrorSince */ {"Since", "З", "С", "Od", "Seit", "Depuis", "Da", "Desde", "Desde"},
     /* YesWord */ {"yes", "так", "да", "tak", "ja", "oui", "sì", "sí", "sim"},
     /* NoWord */ {"no", "ні", "нет", "nie", "nein", "non", "no", "no", "não"},
     /* DetailSipNone */ {"— Signal-only, no SIP", "— лише Signal, без SIP", "— только Signal, без SIP",
@@ -170,6 +174,8 @@ inline constexpr const char* kTable[kKeyCount][kLangCount] = {
                                 "Konto löschen  ", "supprimer le compte  ", "elimina account  ",
                                 "eliminar cuenta  ", "excluir conta  "},
     /* FooterBack */ {"back", "назад", "назад", "wstecz", "zurück", "retour", "indietro", "atrás", "voltar"},
+    /* FooterReset */ {"reset", "скинути", "сбросить", "zresetuj", "zurücksetzen", "réinitialiser", "resetta",
+                        "restablecer", "redefinir"},
     /* SignalingUdpInsecure */ {"⚠ UDP (not encrypted)", "⚠ UDP (не шифровано)", "⚠ UDP (не шифровано)",
                                  "⚠ UDP (nieszyfrowane)", "⚠ UDP (nicht verschlüsselt)", "⚠ UDP (non chiffré)",
                                  "⚠ UDP (non cifrato)", "⚠ UDP (no cifrado)", "⚠ UDP (não criptografado)"},
@@ -184,6 +190,10 @@ inline constexpr const char* kTable[kKeyCount][kLangCount] = {
     /* ActionDeactivateTitle */ {"deactivate {}?", "deactivate {}?", "deactivate {}?", "deactivate {}?",
                                   "deactivate {}?", "deactivate {}?", "deactivate {}?", "deactivate {}?",
                                   "deactivate {}?"},
+    /* ActionUnlinkTitle */ {"⚠ unlink {}", "⚠ відв'язати {}", "⚠ отвязать {}", "⚠ odłącz {}", "⚠ {} trennen",
+                              "⚠ dissocier {}", "⚠ scollega {}", "⚠ desvincular {}", "⚠ desvincular {}"},
+    /* ActionResetTitle */ {"⚠ reset {}", "⚠ скинути {}", "⚠ сбросить {}", "⚠ zresetuj {}", "⚠ {} zurücksetzen",
+                             "⚠ réinitialiser {}", "⚠ resetta {}", "⚠ restablecer {}", "⚠ redefinir {}"},
     /* ActionDeleteTitle */ {"⚠ delete account {}", "⚠ видалити акаунт {}", "⚠ удалить аккаунт {}",
                               "⚠ usuń konto {}", "⚠ Konto {} löschen", "⚠ supprimer le compte {}",
                               "⚠ elimina l'account {}", "⚠ eliminar la cuenta {}", "⚠ excluir a conta {}"},
@@ -240,6 +250,43 @@ inline constexpr const char* kTable[kKeyCount][kLangCount] = {
      "inaccesible para los mensajes de Signal entrantes hasta la reactivación. No afecta los datos locales.",
      "Uma flag real, porém reversível, do lado do servidor (fetchesMessages=false) - o número ficará "
      "inacessível para mensagens do Signal recebidas até a reativação. Não afeta os dados locais."},
+    /* ActionUnlinkBody */
+    {"Irreversible locally: wipes this account's row entirely (keys, sessions, cached contacts, SIP/deployment "
+     "config) from the database. LOCAL ONLY - does not contact Signal's servers, so the real account and phone "
+     "number are completely unaffected. Re-link or re-register to recreate the local row from scratch.",
+     "Незворотно локально: повністю стирає рядок цього акаунта (ключі, сесії, кешовані контакти, "
+     "SIP/конфігурацію розгортання) з бази даних. ЛИШЕ ЛОКАЛЬНО - серверів Signal не зачіпає, тож справжній "
+     "акаунт і номер телефону абсолютно не постраждають. Щоб відтворити локальний рядок з нуля, знадобиться "
+     "повторна прив'язка або реєстрація.",
+     "Необратимо локально: полностью стирает строку этого аккаунта (ключи, сессии, кешированные контакты, "
+     "SIP/конфигурацию развёртывания) из базы данных. ТОЛЬКО ЛОКАЛЬНО - серверов Signal не затрагивает, поэтому "
+     "реальный аккаунт и номер телефона абсолютно не пострадают. Чтобы воссоздать локальную строку с нуля, "
+     "понадобится повторная привязка или регистрация.",
+     "Nieodwracalne lokalnie: całkowicie usuwa wiersz tego konta (klucze, sesje, zbuforowane kontakty, "
+     "konfigurację SIP/wdrożenia) z bazy danych. TYLKO LOKALNIE - nie dotyka serwerów Signal, więc prawdziwe "
+     "konto i numer telefonu pozostają całkowicie nienaruszone. Aby odtworzyć lokalny wiersz od zera, potrzebne "
+     "będzie ponowne powiązanie lub rejestracja.",
+     "Lokal unwiderruflich: löscht den Datensatz dieses Kontos vollständig (Schlüssel, Sitzungen, "
+     "zwischengespeicherte Kontakte, SIP-/Bereitstellungskonfiguration) aus der Datenbank. NUR LOKAL - die "
+     "Signal-Server werden nicht berührt, das echte Konto und die Telefonnummer bleiben also vollständig "
+     "unberührt. Um den lokalen Datensatz neu zu erstellen, ist eine erneute Verknüpfung oder Registrierung "
+     "nötig.",
+     "Irréversible localement : efface entièrement la ligne de ce compte (clés, sessions, contacts mis en cache, "
+     "configuration SIP/déploiement) de la base de données. LOCAL UNIQUEMENT - ne touche pas aux serveurs de "
+     "Signal, donc le vrai compte et le numéro de téléphone restent totalement intacts. Il faudra relier ou "
+     "réenregistrer pour recréer la ligne locale à partir de zéro.",
+     "Irreversibile localmente: cancella completamente la riga di questo account (chiavi, sessioni, contatti in "
+     "cache, configurazione SIP/distribuzione) dal database. SOLO LOCALE - non tocca i server di Signal, quindi "
+     "l'account reale e il numero di telefono restano del tutto intatti. Per ricreare la riga locale da zero "
+     "servirà un nuovo collegamento o una nuova registrazione.",
+     "Irreversible localmente: borra por completo la fila de esta cuenta (claves, sesiones, contactos en caché, "
+     "configuración SIP/despliegue) de la base de datos. SOLO LOCAL - no afecta a los servidores de Signal, por "
+     "lo que la cuenta real y el número de teléfono quedan completamente intactos. Para recrear la fila local "
+     "desde cero hará falta volver a vincular o registrar.",
+     "Irreversível localmente: apaga por completo a linha desta conta (chaves, sessões, contatos em cache, "
+     "configuração SIP/implantação) do banco de dados. APENAS LOCAL - não afeta os servidores do Signal, então "
+     "a conta real e o número de telefone ficam totalmente intactos. Para recriar a linha local do zero será "
+     "preciso vincular ou registrar novamente."},
     /* ActionDeleteBody */
     {"Irreversible. A real DELETE /v1/accounts/me on the Signal server - the number is freed up for someone "
      "else to register, local keys are wiped on success.",
