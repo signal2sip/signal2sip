@@ -1888,12 +1888,45 @@ bool setupAccount(const AccountConfig& accountConfig) {
             deauthorized = lookup->second->socket->isDeauthorized();
         }
         if (deauthorized) {
-            std::cerr << "[daemon][" << accountConfig.name
+            std::cerr << "<3>[daemon][" << accountConfig.name
                        << "] account setup failed: Signal rejected this device's credentials (401/403/4401) - "
                           "the account was most likely unlinked or deleted on the real Signal side before this "
                           "daemon even started. Run `signal2sip-gendb " << accountConfig.name
                        << " link` to re-link it, then restart the daemon - skipping this account for now, "
                           "continuing with the rest\n";
+
+            // The runtime watchdog loop (below, later in this file) only
+            // ever persists last_error/fires the hook for a drop that
+            // happens WHILE this process is running - an account that's
+            // already deauthorized before setupAccount() even gets this
+            // far (e.g. unlinked while the daemon was down, then
+            // restarted) hit a completely different code path and was
+            // silently skipped - confirmed live 2026-08-15: after a
+            // restart, this branch fired repeatedly but last_error in the
+            // DB never changed. Only persist+notify the FIRST time this
+            // process sees it as new (last_error was empty going into this
+            // attempt) - avoids re-notifying on every subsequent restart
+            // of an already-known-broken account (e.g. a crash-restart
+            // loop from some unrelated cause), mirroring the runtime
+            // watchdog's own "alert once" behavior
+            // (AccountState::deauthorizedAlerted) which has no equivalent
+            // here since this is always a fresh process's first attempt.
+            if (auto it = g_accounts.find(accountConfig.name);
+                it != g_accounts.end() && it->second->account.last_error.empty()) {
+                const std::string errorMsg =
+                    "deauthorized: Signal rejected this device's credentials (401/403/4401)";
+                const int64_t nowEpochSec = std::chrono::duration_cast<std::chrono::seconds>(
+                                                 std::chrono::system_clock::now().time_since_epoch())
+                                                 .count();
+                try {
+                    it->second->storage->setAccountLastError(errorMsg, nowEpochSec);
+                } catch (const std::exception& persistErr) {
+                    std::cerr << "[daemon][" << accountConfig.name
+                               << "] failed to persist last_error: " << persistErr.what() << "\n";
+                }
+                runAccountErrorHook(g_global.onAccountErrorCmd, accountConfig.name, it->second->account.e164,
+                                     "deauthorized");
+            }
         } else {
             std::cerr << "[daemon][" << accountConfig.name << "] account setup failed: " << e.what()
                        << " - skipping this account, continuing with the rest\n";
@@ -2249,8 +2282,19 @@ int main(int argc, char** argv) {
 
                     const std::string errorMsg =
                         "deauthorized: Signal rejected this device's credentials (401/403/4401)";
+                    // nowMs (above) is steady_clock - fine for interval math
+                    // in this same loop, but meaningless as a stored
+                    // timestamp (its epoch is unspecified, e.g. time since
+                    // boot on Linux - confirmed live 2026-08-15, a real
+                    // deauth event persisted last_error_at=523610, not a
+                    // real Unix time). last_error_at needs wall-clock time
+                    // since it's read back by gendb/the TUI well after this
+                    // process's own steady_clock reference point is gone.
+                    const int64_t nowEpochSec = std::chrono::duration_cast<std::chrono::seconds>(
+                                                     std::chrono::system_clock::now().time_since_epoch())
+                                                     .count();
                     try {
-                        acct.storage->setAccountLastError(errorMsg, nowMs / 1000);
+                        acct.storage->setAccountLastError(errorMsg, nowEpochSec);
                     } catch (const std::exception& e) {
                         std::cerr << "[daemon][" << name << "] failed to persist last_error: " << e.what() << "\n";
                     }
