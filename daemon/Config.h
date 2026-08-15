@@ -109,6 +109,24 @@ struct GlobalConfig {
     // gendb's own doc comment) for near-instant pickup without waiting
     // out this interval - this is just the fallback/floor.
     unsigned configPollIntervalSec = 30;
+
+    // Optional external hook for an account-level problem the daemon
+    // cannot recover from by itself (today: AuthSocket::isDeauthorized()
+    // - device unlinked/deleted elsewhere, or a future Registration Lock
+    // takeover attempt once SVR2 PIN support exists - see the website's
+    // Signal PIN & Registration Lock doc page). Empty (default) means "no
+    // hook" - the daemon still logs loudly to stderr (tagged for
+    // journald's err priority) and persists `account.last_error` either
+    // way; this is purely an extra, opt-in notification path, deliberately
+    // NOT a specific channel like email/webhook so it can be pointed at
+    // literally anything (ntfy.sh curl, a Telegram bot script, `mail`,
+    // systemd's own escalation). Run as `/bin/sh -c '<value>' sh
+    // <account_name> <e164> <error_type>` (see runAccountErrorHook() in
+    // main.cpp) - account name/e164/error type arrive as $1/$2/$3 inside
+    // the command, never string-concatenated into it. Fire-and-forget:
+    // double-forked so the daemon's own main loop never blocks on it,
+    // regardless of how long it takes to run.
+    std::string onAccountErrorCmd;
 };
 
 // 2026-08-07: every field below except `name` now lives in the `account`

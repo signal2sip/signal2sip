@@ -890,7 +890,17 @@ void cmdListAccounts(const GlobalConfig& global) {
     }
     for (const AccountSummary& s : accounts) {
         std::cout << s.account_name << "\te164=" << s.e164 << "\t" << (s.enabled ? "enabled" : "disabled")
-                  << "\tconfig_version=" << s.config_version << "\n";
+                  << "\tconfig_version=" << s.config_version;
+        // last_error is written only by the running daemon (see
+        // Storage::setAccountLastError()'s own doc comment) - never set
+        // via `config set`, so this is the one field here that reflects
+        // live/observed state rather than admin intent. Empty means "no
+        // known outstanding problem", not "definitely connected right
+        // now" - see schema.sql's comment on the column for the caveat.
+        if (!s.last_error.empty()) {
+            std::cout << "\tERROR (since " << s.last_error_at << "): " << s.last_error;
+        }
+        std::cout << "\n";
     }
 }
 

@@ -39,12 +39,18 @@
 //     disabled are both shown identically amber, since neither
 //     guarantees anything about any specific call - only their labels
 //     differ.
-// This build does NOT know live SIP registration state (that only ever
-// exists in the running daemon's memory, never persisted to the
-// database) - the "problem" (red) status therefore isn't shown yet
-// either, since there is nothing true to say about it from the database
-// alone. Revisit only if a lightweight "daemon periodically writes its
-// own last-known status" mechanism gets built later.
+// 2026-08-15: the "daemon periodically writes its own last-known status"
+// mechanism this comment used to say was a prerequisite now exists -
+// account.last_error/last_error_at (schema.sql), written by the daemon's
+// socket watchdog the moment AuthSocket::isDeauthorized() fires, cleared
+// on the next successful connect (always after a restart - see
+// setupAccount()'s and the watchdog's own comments in daemon/main.cpp for
+// why a deauthorized account can't recover without one). This build DOES
+// read it now (see ViewAccount::last_error / enabledCell()) and shows
+// red. It's still not a live SIP-registration monitor, though - only
+// Signal-side deauthorization is tracked this way so far, not a plain
+// SIP registration drop (which stays purely in the running daemon's
+// memory, same as before).
 //
 // All user-facing display text goes through i18n.h's tr()/format1(),
 // which picks a language from LC_ALL/LC_MESSAGES/LANG at startup (see
@@ -119,6 +125,12 @@ struct ViewAccount {
     std::string sip_host;
     std::string sip_transport;
     std::string sip_srtp;
+    // Written by the running daemon, never by this TUI or gendb - see
+    // schema.sql's own comment on account.last_error/last_error_at. Empty
+    // means "no known outstanding problem", not a live "currently
+    // connected" guarantee (see this file's own top comment on why a red
+    // status previously couldn't be shown at all).
+    std::string last_error;
 };
 
 std::vector<ViewAccount> loadAccounts(const GlobalConfig& global, std::string& errorOut) {
@@ -129,6 +141,7 @@ std::vector<ViewAccount> loadAccounts(const GlobalConfig& global, std::string& e
             view.name = summary.account_name;
             view.e164 = summary.e164;
             view.enabled = summary.enabled;
+            view.last_error = summary.last_error;
             try {
                 Storage storage(global.dbPath, global.dbKey, summary.account_name);
                 AccountRecord record = storage.loadAccount();
@@ -159,6 +172,14 @@ Element mediaCell(const ViewAccount& a) {
 }
 
 Element enabledCell(const ViewAccount& a) {
+    // Only ever red for enabled+problem - matches this file's own top
+    // comment ("red is reserved for 'enabled but not actually connected'
+    // - a real problem. disabled is never red"). A disabled account can
+    // still have a stale last_error from before it was disabled; that's
+    // not shown here since it's not actionable while disabled.
+    if (a.enabled && !a.last_error.empty()) {
+        return hbox({text("● ") | color(kBad), text(tr(Key::StatusError))}) | color(kBad);
+    }
     if (a.enabled) return hbox({text("● ") | color(kGood), text(tr(Key::StatusEnabled))}) | color(kFg);
     return hbox({text("● ") | color(kBorder), text(tr(Key::StatusDisabled))}) | color(kDim);
 }

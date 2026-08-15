@@ -155,6 +155,7 @@ DaemonConfig DaemonConfig::load(const std::string& path) {
         static_cast<unsigned>(std::stoul(getOr(ini, "global", "storage_sync_interval_sec", "43200")));
     daemon.global.configPollIntervalSec =
         static_cast<unsigned>(std::stoul(getOr(ini, "global", "config_poll_interval_sec", "30")));
+    daemon.global.onAccountErrorCmd = getOr(ini, "global", "on_account_error_cmd", "");
 
     // Every account's SIP/deployment config + enabled flag now lives in
     // the database (see AccountConfig's own doc comment) - zero accounts

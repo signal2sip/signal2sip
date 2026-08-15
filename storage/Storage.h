@@ -43,6 +43,11 @@ struct AccountRecord {
     bool signal_censorship_circumvention = false;
     bool enabled = true;
     int64_t config_version = 0;
+
+    // Observed, not admin-set - see schema.sql's own comment on these two
+    // columns. '' means "no known outstanding problem".
+    std::string last_error;
+    int64_t last_error_at = 0;
 };
 
 // Lightweight per-account summary for enumerating every account in the
@@ -53,6 +58,8 @@ struct AccountSummary {
     std::string e164;
     bool enabled = true;
     int64_t config_version = 0;
+    std::string last_error;
+    int64_t last_error_at = 0;
 };
 
 // Enumerates every account row in the database, regardless of which
@@ -133,6 +140,13 @@ public:
     // account row must already exist (created via saveAccount() during
     // register/link/verify) - this is an UPDATE, not an upsert.
     void saveAccountConfig(const AccountRecord& account);
+
+    // Observed connection status, not deployment config - see schema.sql's
+    // own comment on the `account.last_error`/`last_error_at` columns.
+    // Only the daemon calls these (main.cpp's socket watchdog); gendb only
+    // ever reads them back via loadAccount()/listAllAccounts().
+    void setAccountLastError(const std::string& error, int64_t atEpochSeconds);
+    void clearAccountLastError();
 
     // identity in {"aci", "pni"}
     void saveIdentityKeypair(const std::string& identity, const IdentityKeypairRecord& keypair);

@@ -182,6 +182,10 @@ void migrateAccountConfigColumnsIfNeeded(sqlite3* db) {
     addColumnIfMissing(db, "account", "signal_censorship_circumvention", "INTEGER NOT NULL DEFAULT 0");
     addColumnIfMissing(db, "account", "enabled", "INTEGER NOT NULL DEFAULT 1");
     addColumnIfMissing(db, "account", "config_version", "INTEGER NOT NULL DEFAULT 0");
+    // 2026-08-15: not config, but additive/nullable the same way - see
+    // schema.sql's own comment on these two columns.
+    addColumnIfMissing(db, "account", "last_error", "TEXT NOT NULL DEFAULT ''");
+    addColumnIfMissing(db, "account", "last_error_at", "INTEGER NOT NULL DEFAULT 0");
 }
 
 } // namespace
@@ -292,7 +296,7 @@ AccountRecord Storage::loadAccount() {
         "server_url, sip_host, sip_extension, sip_password, sip_bridge_destination, sip_bridge_did, "
         "sip_srtp, sip_transport, sip_tls_ca_file, sip_tls_insecure, outgoing_call_target, "
         "signal_proxy, signal_censorship_circumvention, "
-        "enabled, config_version "
+        "enabled, config_version, last_error, last_error_at "
         "FROM account WHERE account_name = ?");
     bindText(stmt, 1, accountName_);
     if (sqlite3_step(stmt) != SQLITE_ROW) {
@@ -328,7 +332,23 @@ AccountRecord Storage::loadAccount() {
     account.signal_censorship_circumvention = sqlite3_column_int(stmt, 26) != 0;
     account.enabled = sqlite3_column_int(stmt, 27) != 0;
     account.config_version = sqlite3_column_int64(stmt, 28);
+    account.last_error = columnText(stmt, 29);
+    account.last_error_at = sqlite3_column_int64(stmt, 30);
     return account;
+}
+
+void Storage::setAccountLastError(const std::string& error, int64_t atEpochSeconds) {
+    Stmt stmt(db_, "UPDATE account SET last_error = ?, last_error_at = ? WHERE account_name = ?");
+    bindText(stmt, 1, error);
+    sqlite3_bind_int64(stmt, 2, atEpochSeconds);
+    bindText(stmt, 3, accountName_);
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        throw std::runtime_error(std::string("setAccountLastError failed: ") + sqlite3_errmsg(db_));
+    }
+}
+
+void Storage::clearAccountLastError() {
+    setAccountLastError("", 0);
 }
 
 void Storage::saveAccountConfig(const AccountRecord& account) {
@@ -743,13 +763,16 @@ std::vector<AccountSummary> listAllAccounts(const std::string& path, const std::
 
     std::vector<AccountSummary> result;
     {
-        Stmt stmt(db, "SELECT account_name, e164, enabled, config_version FROM account ORDER BY account_name");
+        Stmt stmt(db, "SELECT account_name, e164, enabled, config_version, last_error, last_error_at "
+                       "FROM account ORDER BY account_name");
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             AccountSummary summary;
             summary.account_name = columnText(stmt, 0);
             summary.e164 = columnText(stmt, 1);
             summary.enabled = sqlite3_column_int(stmt, 2) != 0;
             summary.config_version = sqlite3_column_int64(stmt, 3);
+            summary.last_error = columnText(stmt, 4);
+            summary.last_error_at = sqlite3_column_int64(stmt, 5);
             result.push_back(std::move(summary));
         }
     }

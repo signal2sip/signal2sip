@@ -29,10 +29,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <csignal>
+#include <cstring>
 #include <deque>
 #include <fstream>
 #include <functional>
@@ -46,6 +48,7 @@
 #include <sstream>
 #include <thread>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -1640,6 +1643,41 @@ void BridgeAccount::onIncomingCall(pj::OnIncomingCallParam& iprm) {
 // - wrapped in its own try/catch so one account's bad config/network
 // failure never affects any other account sharing this process. Returns
 // false (and leaves no trace in g_accounts) on failure.
+// Fires GlobalConfig::onAccountErrorCmd (see its own doc comment for the
+// full rationale) for one account transitioning into or out of a known
+// problem state. No-op if the hook isn't configured. Double-forks so the
+// grandchild running the actual command is reparented to init/PID 1 and
+// reaped independently - this daemon's own process only ever waits on
+// the immediate (fast-exiting) first child, never on the hook itself, so
+// a slow or hanging hook script can't stall SIP/Signal handling for
+// every other account.
+void runAccountErrorHook(const std::string& cmd, const std::string& accountName, const std::string& e164,
+                          const std::string& errorType) {
+    if (cmd.empty()) return;
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        std::cerr << "[daemon] on_account_error_cmd: fork failed: " << strerror(errno) << "\n";
+        return;
+    }
+    if (pid > 0) {
+        int status = 0;
+        waitpid(pid, &status, 0);
+        return;
+    }
+
+    pid_t grandchild = fork();
+    if (grandchild == 0) {
+        // account_name/e164/errorType arrive as $1/$2/$3 inside `cmd` -
+        // real argv entries to /bin/sh, never string-concatenated into
+        // the command line itself.
+        execl("/bin/sh", "sh", "-c", cmd.c_str(), "signal2sip-hook", accountName.c_str(), e164.c_str(),
+              errorType.c_str(), (char*)nullptr);
+        _exit(127); // execl only returns on failure
+    }
+    _exit(0);
+}
+
 bool setupAccount(const AccountConfig& accountConfig) {
     try {
         // Moved here (from a one-time up-front check in main()) so an
@@ -1684,6 +1722,24 @@ bool setupAccount(const AccountConfig& accountConfig) {
         acct.socket->connect();
         std::cout << "[daemon][" << accountConfig.name << "] connected to chat.signal.org as "
                    << acct.account.e164 << "\n";
+
+        // A fresh connect succeeding is the real "recovered" moment for a
+        // previously-alerted deauthorized account (see the watchdog loop's
+        // own comment on AuthSocket::isDeauthorized() - that state never
+        // clears itself without a full setupAccount() cycle, i.e. a daemon
+        // restart after `gendb link`/`unlink`+`link`). Any other startup
+        // failure below throws and this whole account setup is skipped by
+        // the caller's try/catch, leaving last_error as-is - only a
+        // genuinely working connection clears it.
+        if (!acct.account.last_error.empty()) {
+            try {
+                acct.storage->clearAccountLastError();
+            } catch (const std::exception& e) {
+                std::cerr << "[daemon][" << accountConfig.name << "] failed to clear last_error: " << e.what()
+                           << "\n";
+            }
+            runAccountErrorHook(g_global.onAccountErrorCmd, accountConfig.name, acct.account.e164, "recovered");
+        }
 
         refreshPrekeys(*acct.storage, *acct.socket, acct.account);
         refreshAccountAttributes(*acct.socket, acct.account);
@@ -2174,12 +2230,31 @@ int main(int argc, char** argv) {
             if (!nowConnected && acct.socket->isDeauthorized()) {
                 if (!acct.deauthorizedAlerted) {
                     acct.deauthorizedAlerted = true;
-                    std::cerr << "[daemon][" << name
+                    // "<3>" is systemd's syslog-level-prefix convention
+                    // (LOG_ERR) - the unit's stderr already lands in
+                    // journald by default (no StandardError= override in
+                    // signal2sip-daemon.service, SyslogLevelPrefix=yes is
+                    // systemd's own default), so this alone makes the line
+                    // greppable via `journalctl -p err` or usable in a
+                    // systemd OnFailure=/alerting setup with zero new
+                    // dependencies.
+                    std::cerr << "<3>[daemon][" << name
                                << "] Signal rejected this device's credentials (401/403/4401) - the account was "
-                                  "most likely unlinked or deleted on the real Signal side. Giving up on automatic "
-                                  "reconnection for this account; run `signal2sip-gendb " << name
+                                  "most likely unlinked or deleted on the real Signal side, or (once Registration "
+                                  "Lock support exists) a takeover attempt was rejected for lack of the right PIN. "
+                                  "Giving up on automatic reconnection for this account; run `signal2sip-gendb "
+                               << name
                                << " link` to re-link it (or `unlink` first if it needs a clean local slate), then "
                                   "restart the daemon.\n";
+
+                    const std::string errorMsg =
+                        "deauthorized: Signal rejected this device's credentials (401/403/4401)";
+                    try {
+                        acct.storage->setAccountLastError(errorMsg, nowMs / 1000);
+                    } catch (const std::exception& e) {
+                        std::cerr << "[daemon][" << name << "] failed to persist last_error: " << e.what() << "\n";
+                    }
+                    runAccountErrorHook(g_global.onAccountErrorCmd, name, acct.account.e164, "deauthorized");
                 }
                 continue;
             }

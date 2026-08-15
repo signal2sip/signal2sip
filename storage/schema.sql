@@ -77,7 +77,21 @@ CREATE TABLE IF NOT EXISTS account (
     -- AccountConfig::configVersion, Config.h) and rebuilds that one
     -- account (teardown+setup) when a poll/SIGHUP sees a mismatch - see
     -- main.cpp's reloadConfig().
-    config_version            INTEGER NOT NULL DEFAULT 0
+    config_version            INTEGER NOT NULL DEFAULT 0,
+
+    -- 2026-08-15: observed connection status, NOT admin-set config (unlike
+    -- every other column above/below this comment) - the daemon writes
+    -- these, never `gendb config set`. Set the moment AuthSocket reports
+    -- isDeauthorized() (device unlinked/deleted elsewhere, or a future
+    -- Registration Lock takeover attempt - see the website's Signal PIN
+    -- doc page), cleared back to '' the moment a reconnect succeeds.
+    -- Read via `signal2sip-gendb <name> status` or the TUI's account list.
+    -- An empty value here does NOT by itself mean "currently connected" -
+    -- it only means no *known, unrecoverable-without-admin-action*
+    -- problem is outstanding (the daemon might simply not be running, or
+    -- a plain drop might still be mid-retry).
+    last_error                TEXT NOT NULL DEFAULT '',
+    last_error_at              INTEGER NOT NULL DEFAULT 0
 );
 
 -- Identity keypairs: one row per (account_name, identity in {'aci','pni'}).
