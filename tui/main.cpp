@@ -371,12 +371,15 @@ GendbResult runGendb(const std::string& gendbPath, const std::vector<std::string
 } // namespace
 
 int main(int argc, char** argv) {
+    refuseIfRunningAsRoot("signal2sip-tui");
     std::string configPath = resolveConfigPath(argc, argv);
+    checkOwnerAndModeOrDie(configPath, /*requireExactMode0600=*/true);
     GlobalConfig global = loadGlobalConfigLenient(configPath);
     if (global.dbPath.empty() || global.dbKey.empty()) {
         std::cerr << "signal2sip-tui: " << configPath << tr(Key::StartupNoDbConfig);
         return 1;
     }
+    checkOwnerAndModeOrDie(global.dbPath, /*requireExactMode0600=*/false);
 
     std::vector<ViewAccount> accounts;
     std::string loadError;

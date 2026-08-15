@@ -42,6 +42,28 @@ namespace signal2sip {
 
 std::string resolveConfigPath(int argc, char** argv);
 
+// Startup privilege/permission hardening (see the website's Internals
+// page - this closes its own "planned, not yet implemented" callout).
+// Both print a clear message to stderr and call exit(1) themselves on
+// failure - every caller's response is identical (stop immediately,
+// there's no sensible way to proceed), so there's nothing useful a
+// bool/throw return would let a caller do differently.
+
+// Refuses to run as root (euid 0). `programName` is just for the error
+// message (e.g. "signal2sip-daemon").
+void refuseIfRunningAsRoot(const char* programName);
+
+// Stats `path` and refuses to continue unless the calling process's
+// real user owns it. When `requireExactMode0600` is true, also refuses
+// unless the file's permission bits are exactly 0600 - used for the
+// config file itself (holds db_key in plaintext) but not the SQLCipher
+// database file (already encrypted at rest; ownership match is the
+// meaningful check there, not a specific mode, since e.g. group-shared
+// deployments may reasonably want 0640 on the DB). A no-op if `path`
+// doesn't exist yet (e.g. gendb about to create a brand-new database on
+// first run) - nothing to check yet.
+void checkOwnerAndModeOrDie(const std::string& path, bool requireExactMode0600);
+
 // Same fallback order as resolveConfigPath() above: /etc/signal2sip/... for
 // an installed deployment, else a path relative to the current working
 // directory for a dev checkout. Single source of truth for the CA cert

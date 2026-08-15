@@ -2098,6 +2098,8 @@ int main(int argc, char** argv) {
         }
     }
 
+    refuseIfRunningAsRoot("signal2sip-daemon");
+
     // A redirected (non-tty) stdout is fully buffered by default - a
     // long-running daemon's log output would otherwise sit invisible in
     // an in-process buffer for a long time (or vanish entirely on a
@@ -2120,6 +2122,7 @@ int main(int argc, char** argv) {
     std::signal(SIGHUP, onReloadSignal);
 
     g_configPath = resolveConfigPath(argc, argv);
+    checkOwnerAndModeOrDie(g_configPath, /*requireExactMode0600=*/true);
     DaemonConfig config;
     try {
         config = DaemonConfig::load(g_configPath);
@@ -2127,6 +2130,7 @@ int main(int argc, char** argv) {
         std::cerr << "[daemon] config error: " << e.what() << "\n";
         return 1;
     }
+    checkOwnerAndModeOrDie(config.global.dbPath, /*requireExactMode0600=*/false);
     std::cout << "[daemon] loaded [global] from " << g_configPath << ", " << config.accounts.size()
                << " enabled account(s) from the database\n";
     g_global = config.global;

@@ -1,10 +1,13 @@
 #include "Config.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <stdexcept>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "../storage/Storage.h"
 
@@ -133,6 +136,35 @@ std::string resolveConfigPath(int argc, char** argv) {
 std::string resolveCaCertPath() {
     if (fileExists("/etc/signal2sip/certs/signal-root-ca.pem")) return "/etc/signal2sip/certs/signal-root-ca.pem";
     return "./certs/signal-root-ca.pem";
+}
+
+void refuseIfRunningAsRoot(const char* programName) {
+    if (::geteuid() != 0) return;
+    std::cerr << "[" << programName
+               << "] refusing to start as root - create a dedicated non-root user (e.g. `signal2sip`), chown the "
+                  "config file and database to it, and run this as that user instead. Running Signal/SIP-facing "
+                  "network code as root is unnecessary privilege this project deliberately doesn't want.\n";
+    std::exit(1);
+}
+
+void checkOwnerAndModeOrDie(const std::string& path, bool requireExactMode0600) {
+    struct stat st{};
+    if (::stat(path.c_str(), &st) != 0) return; // doesn't exist yet - nothing to check
+
+    if (st.st_uid != ::getuid()) {
+        std::cerr << "[config] refusing to use '" << path << "' - it's owned by uid " << st.st_uid
+                   << ", not the user running this process (uid " << ::getuid()
+                   << "). chown it to the right user first.\n";
+        std::exit(1);
+    }
+    if (requireExactMode0600 && (st.st_mode & 07777) != 0600) {
+        char modeStr[8];
+        std::snprintf(modeStr, sizeof(modeStr), "%04o", st.st_mode & 07777);
+        std::cerr << "[config] refusing to use '" << path << "' - its permissions are " << modeStr
+                   << ", not exactly 0600 (it contains the database passphrase in plain text). `chmod 600 " << path
+                   << "`.\n";
+        std::exit(1);
+    }
 }
 
 DaemonConfig DaemonConfig::load(const std::string& path) {

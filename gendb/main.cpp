@@ -44,6 +44,7 @@
 #include <functional>
 #include <iostream>
 #include <stdexcept>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <nlohmann/json.hpp>
@@ -204,6 +205,14 @@ void bootstrapGlobalConfigIfNeeded(const std::string& configPath) {
         f << "db_key=" << generatedKey << "\n";
     }
     f.close();
+
+    // db_key just landed in this file in plain text - lock it down to
+    // exactly 0600 immediately, rather than leaving it at whatever the
+    // process's umask produced (typically 0644/0664, world/group
+    // readable). Matches checkOwnerAndModeOrDie()'s own requirement for
+    // this file - without this, a freshly bootstrapped config would fail
+    // that check on the very next run.
+    ::chmod(configPath.c_str(), 0600);
 
     std::cout << "[gendb] bootstrapped [global] in " << configPath << ":\n";
     if (dbPathMissing) std::cout << "  db_path=" << dbPath << "\n";
@@ -1000,6 +1009,7 @@ int main(int argc, char** argv) {
     // Screen 5 needs to stream live. Force line buffering unconditionally
     // so a pipe behaves the same as a terminal here.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
+    refuseIfRunningAsRoot("signal2sip-gendb");
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -1023,8 +1033,16 @@ int main(int argc, char** argv) {
 
     try {
         std::string configPath = resolveGendbConfigPath(args.configPath);
+        // Before bootstrapGlobalConfigIfNeeded() touches the file at all
+        // (a no-op here if it doesn't exist yet - the legitimate
+        // brand-new-deployment case) - otherwise a wrong-owner/-mode
+        // existing file surfaces as a generic "cannot open" from deeper
+        // inside bootstrap's own read attempt instead of this specific,
+        // actionable message.
+        checkOwnerAndModeOrDie(configPath, /*requireExactMode0600=*/true);
         bootstrapGlobalConfigIfNeeded(configPath);
         DaemonConfig config = DaemonConfig::load(configPath);
+        checkOwnerAndModeOrDie(config.global.dbPath, /*requireExactMode0600=*/false);
 
         if (args.command == "register") {
             std::string transport = args.positional.empty() ? "sms" : args.positional[0];
